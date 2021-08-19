@@ -4,13 +4,14 @@ Golang 1.17 released with a necessary breaking change on the net parsers,
 rejecting leading zeros in IP addresses.
 
 There is a security CVE associated https://github.com/sickcodes/security/blob/master/advisories/SICK-2021-016.md
-since this parser misalignment can be exploited by malicious actors.
+because leading zeros can cause parser misalignment between golang and other implementations,
+and this be exploited by malicious actors.
 
 Basically the problem is that Golang interprets leading zeros as decimal:
 
 10.008.011.012 = 10.8.11.12
 
-However, there other tools that interpret leading zeros as octal, per example, ping or iptables:
+However, other implementations interpret leading zeros as octal, per example, ping or iptables:
 
 ```sh
 $ iptables -A INPUT -d 10.008.011.012 -m comment --comment test-ip-zeros -j ACCEPT
@@ -18,14 +19,20 @@ $ iptables-save | grep test-ip-zero
 -A INPUT -d 10.8.9.10/32 -m comment --comment test-ip-zeros -j ACCEPT
 ```
 
-The Kubernetes project has to keep compatibility with previous stored values, hence it has forked
-the previous parsers so they can be consumed from "k8s.io/utils/net" as ParseIPSloppy() and ParseCIDRSloppy()
+The Kubernetes project has to keep compatibility with previous stored values, so it has forked
+the previous golang parsers as part of "k8s.io/utils/net": ParseIPSloppy() and ParseCIDRSloppy()
 
 https://github.com/kubernetes/utils/pull/207
 
 
-For projects that wants to use the old parsers, this tool converts the standard library functions to the
-forked ones.
+However, refactoring the code to replace the standard lib network parsers is complex, even more complicated
+on networking projects, where these functions are heavily used.
+
+This tool converts the standard library functions to the forked ones, it can work on files or on paths, replacing
+every occurrence of net.ParseIP or net.ParseCIDR by its previous versions (1.16-), and fixing the imports
+accordenly.
+
+It can rewrite the file directly or just output the difference without doing any modification
 
 ```sh
 $ sloppy-netparser -diff cmd/kubeadm/app/constants/constants.go
